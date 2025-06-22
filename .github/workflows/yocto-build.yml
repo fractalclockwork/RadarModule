@@ -1,0 +1,30 @@
+name: Yocto Build
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    container:
+      image: ghcr.io/your-org/yocto-builder:latest
+      options: --privileged
+
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v3
+
+      - name: Setup Build Environment
+        run: |
+          source poky/oe-init-build-env
+          bitbake core-image-minimal
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: yocto-image
+          path: build/tmp/deploy/images/beaglebone/
+
