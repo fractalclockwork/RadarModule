@@ -3,37 +3,43 @@ set -e
 
 YOCTO_BRANCH="kirkstone"
 BUILD_DIR="build"
+CORE_COUNT=$(nproc)
 
-echo "🔎 Checking for Poky directory..."
-if [ ! -d "poky/.git" ]; then
-    echo "📦 Cloning Poky..."
-    git clone -b $YOCTO_BRANCH git://git.yoctoproject.org/poky.git
-fi
+echo "🔍 Detected $CORE_COUNT CPU cores."
+
+# Clone layers only if missing
+clone_if_needed() {
+  local dir=$1
+  local repo=$2
+  local branch=$3
+  if [ -d "$dir/.git" ]; then
+    echo "✅ $dir already exists. Skipping clone."
+  else
+    echo "📦 Cloning $dir..."
+    git clone -b "$branch" "$repo" "$dir"
+  fi
+}
+
+clone_if_needed poky git://git.yoctoproject.org/poky.git $YOCTO_BRANCH
 cd poky
 
-echo "🔎 Checking for meta-openembedded..."
-[ -d meta-openembedded/.git ] || git clone -b $YOCTO_BRANCH git://git.openembedded.org/meta-openembedded
+clone_if_needed meta-openembedded git://git.openembedded.org/meta-openembedded $YOCTO_BRANCH
+clone_if_needed meta-ti https://git.ti.com/git/arago-project/meta-ti.git $YOCTO_BRANCH
+clone_if_needed meta-arm git://git.yoctoproject.org/meta-arm.git $YOCTO_BRANCH
 
-echo "🔎 Checking for meta-ti..."
-[ -d meta-ti/.git ] || git clone -b $YOCTO_BRANCH https://git.ti.com/git/arago-project/meta-ti.git
+# Only initialize build dir if missing
+if [ ! -f "$BUILD_DIR/conf/local.conf" ]; then
+  echo "🛠️ Initializing build environment..."
+  source oe-init-build-env $BUILD_DIR
 
-echo "🔎 Checking for meta-arm..."
-[ -d meta-arm/.git ] || git clone -b $YOCTO_BRANCH git://git.yoctoproject.org/meta-arm.git
+  echo "⚙️ Writing local.conf..."
+  cp ../meta-poky/conf/local.conf.sample conf/local.conf
+  echo "MACHINE = \"beaglebone\"" >> conf/local.conf
+  echo "BB_NUMBER_THREADS = \"$CORE_COUNT\"" >> conf/local.conf
+  echo "PARALLEL_MAKE = \"-j$CORE_COUNT\"" >> conf/local.conf
 
-echo "🛠️ Setting up build environment..."
-rm -rf $BUILD_DIR
-source oe-init-build-env $BUILD_DIR
-
-echo "⚙️ Writing local.conf..."
-cp -f ../meta-poky/conf/local.conf.sample conf/local.conf
-cat <<EOF >> conf/local.conf
-MACHINE = "beaglebone"
-BB_NUMBER_THREADS = "4"
-PARALLEL_MAKE = "-j4"
-EOF
-
-echo "⚙️ Writing bblayers.conf..."
-cat > conf/bblayers.conf <<EOF
+  echo "⚙️ Writing bblayers.conf..."
+  cat > conf/bblayers.conf <<EOF
 LCONF_VERSION = "7"
 
 BBPATH = "\${TOPDIR}"
@@ -49,12 +55,15 @@ BBLAYERS ?= " \\
 "
 EOF
 
-echo ""
-echo "✅ Yocto environment configured for BeagleBone Black."
-echo ""
-echo "To build, run:"
-echo "  cd poky"
-echo "  source oe-init-build-env $BUILD_DIR"
-echo "  bitbake core-image-minimal"
-echo ""
+  echo ""
+  echo "✅ Yocto build environment configured for BeagleBone Black."
+  echo ""
+  echo "Next steps:"
+  echo "  cd poky"
+  echo "  source oe-init-build-env $BUILD_DIR"
+  echo "  bitbake core-image-minimal"
+  echo ""
+else
+  echo "🟡 Build directory already exists. Skipping reinitialization."
+fi
 
